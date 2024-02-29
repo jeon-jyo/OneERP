@@ -1,0 +1,455 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+        
+<mapper namespace="com.springboot.team_one.dao.VUEDao">
+	<!-- ================인사================ -->
+	<!-- 인사 / 부서목록 -->
+	<select id="dept_list" resultType="com.springboot.team_one.dto.AssembleDTO">
+		SELECT department_id
+		     , name de_name
+		     , tel
+		     , address de_address
+		     , detail_address de_detail_address
+		     , zip_code de_zip_code
+		  FROM DEPARTMENT ORDER BY DEPARTMENT_ID
+	</select>
+
+	<!-- 인사 / 인사카드목록 -->
+   	<!-- 인사카드목록 -->
+ 	<select id="emp_list" resultType="com.springboot.team_one.dto.AssembleDTO">
+		SELECT e.EMPLOYEE_ID
+     	 	 , e.NAME em_name
+     		 , e.PHONE em_phone
+     		 , e.EMAIL em_email
+     		 , e.HIRE_DATE
+     		 , d.NAME de_name
+     		 , p.NAME po_name
+     		 , e.STATUS em_status
+  		  FROM EMPLOYEE e
+  		  JOIN DEPARTMENT d
+    		ON d.DEPARTMENT_ID = e.DEPARTMENT_ID
+  		  JOIN POSITION p
+    		ON p.POSITION_ID = e.POSITION_ID
+    	 ORDER BY e.HIRE_DATE
+	</select>
+
+	<!-- ================회계================ -->
+	<!-- ======= 재무상태표 ======= -->
+	<!-- 보통예금(유동자산) / 현재출금계좌 잔액합계 -->
+	<select id="bank_assets" resultType="Integer">
+	   SELECT NVL(ROUND(SUM(a.balance)),0)
+	    FROM account a
+	   WHERE a.department_id IN 200
+	       AND a.enable NOT IN 'N'
+	       AND a.account_name LIKE '%출금%'
+	</select>
+	
+	<!-- 매출채권 -->
+	<!-- 현재 날짜 기반, 월 매출 공급가액 합계 -->
+	<select id="trade_receivable" resultType="Integer">
+	   SELECT NVL(ROUND(SUM(ss.supply_amount)),0)
+	      FROM sales_slip ss, slip s
+	      WHERE ss.slip_id = s.slip_id
+	      AND TO_CHAR(s.register_date,'YYYYMM') = TO_CHAR(SYSDATE,'YYYYMM')
+	      AND ss.type IN '매출'
+	      AND s.state IN '승인'
+	</select>
+	
+	<!-- 매입채무 -->
+	<!-- 현재 날짜 기반, 월 매입 공급가액 합계 -->
+	<select id="trade_payable" resultType="Integer">
+	   SELECT NVL(ROUND(SUM(ss.supply_amount)),0)
+	      FROM sales_slip ss, slip s
+	      WHERE ss.slip_id = s.slip_id
+	      AND TO_CHAR(s.register_date,'YYYYMM') = TO_CHAR(SYSDATE,'YYYYMM')
+	      AND ss.type IN '매입'
+	</select>
+	
+	<!-- 부가세대급금 -->
+	<!-- 매입시 미리 지불한 부가세 => 자산 -->
+	<select id="vat_payment" resultType="Integer">
+	   SELECT NVL(ROUND(SUM(ss.tax_amount)),0)
+	      FROM sales_slip ss, slip s
+	      WHERE ss.slip_id = s.slip_id
+	      AND TO_CHAR(s.register_date,'YYYYMM') = TO_CHAR(SYSDATE,'YYYYMM')
+	      AND ss.type IN '매입'
+	</select>
+	
+	<!-- 부가세예수금 -->
+	<!-- 매출시 미리 받은 부가세 => 부채 -->
+	<select id="vat_deposit" resultType="Integer">
+	   SELECT NVL(ROUND(SUM(ss.tax_amount)),0)
+	      FROM sales_slip ss, slip s
+	      WHERE ss.slip_id = s.slip_id
+	      AND TO_CHAR(s.register_date,'YYYYMM') = TO_CHAR(SYSDATE,'YYYYMM')
+	      AND ss.type IN '매출'
+	</select>
+	
+	<!-- ======= 손익계산서 ======= -->
+	<!-- 매출총액 -->
+	<select id="take_sales" resultType="Integer">
+	   SELECT NVL(ROUND(SUM(ss.supply_amount + ss.tax_amount)),0)
+	   FROM slip s, sales_slip ss
+	   where s.slip_id = ss.slip_id
+	   and s.state IN '승인'
+	   and ss.type IN '매출'
+	   AND TO_CHAR(s.register_date,'YYYYMM') = TO_CHAR(SYSDATE,'YYYYMM')
+	</select>
+	
+	<!-- 기초상품 재고 입력일 조회-->
+	<select id="beg_inven_select" resultType="Integer">
+	   SELECT TO_NUMBER(TO_CHAR(MAX(i_time), 'yyyymmdd'))
+	   FROM inventory
+	</select>
+	
+	<!-- 기초상품 재고 입력-->
+	<insert id="beg_inven_insert" parameterType="Integer">
+	   INSERT INTO inventory
+	   VALUES(CURRENT_DATE, #{cost})
+	</insert>
+	
+	<!-- 기초상품 재고액 -->
+	<select id="beginning_inventory" resultType="Integer">
+	   SELECT NVL(i_cost,0)
+	   FROM inventory
+	   WHERE i_time IN (SELECT MAX(i_time)
+	                   FROM inventory)
+	</select>
+	
+	<!-- 당기순 매입액 -->
+	<select id="current_inventory" resultType="Integer">
+	   SELECT NVL(ROUND(SUM(ss.supply_amount + ss.tax_amount)),0)
+	   FROM slip s, sales_slip ss
+	   where s.slip_id = ss.slip_id
+	   and s.state IN '승인'
+	   and ss.type IN '매입'
+	   AND TO_CHAR(s.register_date,'YYYYMM') = TO_CHAR(SYSDATE,'YYYYMM')
+	</select>
+	
+	<!-- 기말상품 재고액 -->
+	<select id="ending_inventory" resultType="Integer">
+	   SELECT NVL(SUM(l.qty * p.cost),0)
+	   FROM lack l, product p
+	   WHERE l.product_id = p.product_id
+	</select>
+	
+	<!-- 급여총액 -->
+	<select id="total_salary" resultType="Integer">
+	   SELECT NVL(ROUND(SUM(v.net_pay), 0),0)
+	   FROM v_net_pay v, salary s
+	   WHERE v.salary_id = s.salary_id
+	   AND s.payday = TO_CHAR(SYSDATE,'YYYYMM')
+	</select>
+	
+	<!-- 각 비용 계정별 검색 -->
+	<select id="all_expense_lookup" parameterType="String" resultType="Integer">
+	   SELECT NVL(SUM(expenses),0)
+	     FROM operating_expense
+	   WHERE account_title IN #{subject}
+	</select>
+	
+	<!-- 비과세 소득합계 -->
+	<select id="non_tax_sum" resultType="Integer">
+	   SELECT NVL(SUM(non_taxtion),0)
+	   FROM v_non_taxtion
+	   WHERE PAYDAY = TO_CHAR(SYSDATE,'YYYYMM')
+	</select>
+	
+	<!-- ================구매================ -->
+	<!-- 구매 / 매입장 목록 -->
+    <!-- 주문서 목록 불러오기 -->
+    <select id="order_list_sc" resultType="com.springboot.team_one.dto.AssembleDTO">
+ 		SELECT r.request_id, c.name cl_name, c.ceo_name, c.phone cl_phone, e.name em_name, r.begin_date , r.end_date , s.state, r.status re_status
+		  FROM request r
+		  JOIN client c
+		    ON r.client_id = c.client_id
+		  JOIN employee e
+		    ON r.employee_id = e.employee_id
+          JOIN SLIP s
+            ON r.request_id = s.request_id
+		 WHERE r.TYPE = '주문서'
+		   AND c.TYPE = '구매'
+		 order by r.begin_date desc
+ 	</select>
+ 	
+  	<!-- 매입장 목록 -->
+	<select id="purchase_in_list" resultType="com.springboot.team_one.dto.AssembleDTO">
+		SELECT sl.register_date sl_register_date
+			 , sl.update_date update_date
+			 , sl.state state
+		     , sa.sale_slip_id sale_slip_id
+		     , sa.account_title sa_account_title
+		     , ROUND(sa.supply_amount) supply_amount
+		     , ROUND(sa.tax_amount) tax_amount
+		     , sa.type sa_type
+		     , sa.abstract sa_abstract
+		     , c.client_id client_id
+		     , c.name cl_name
+		  FROM slip sl, sales_slip sa, request r, client c
+		 WHERE sa.slip_id = sl.slip_id
+		   AND sl.request_id = r.request_id
+		   AND r.client_id = c.client_id
+		   AND sa.type IN '매입'
+		   AND sl.state NOT IN '요청'
+		 ORDER BY sa.sale_slip_id DESC
+	</select>
+	
+ 	<!-- 전표 승인 요청 -->
+	<update id="slip_update_sc" parameterType="String">
+	UPDATE slip
+	SET state='신청' 
+	WHERE request_id=#{request_id}
+	</update>
+	
+	<!-- 매입 매출 전표 적요 추가 -->
+	<update id="sales_slip_update_sc" parameterType="java.util.Map">
+	UPDATE sales_slip
+	SET abstract = #{good}
+	WHERE slip_id = (SELECT slip_id FROM slip WHERE request_id = #{request_id})
+	</update>
+	
+ 	<!-- 견적 신청서 상세정보의 상품 리스트 -->
+    <select id="estimate_application_detail_list" parameterType="String" resultType="com.springboot.team_one.dto.AssembleDTO">
+ 		SELECT r.qty re_qty, p.name pr_name, p.category, r.request_id
+		  FROM REQUEST_DETAIL r
+		  JOIN PRODUCT p
+		    ON r.product_id = p.product_id
+		 WHERE r.request_id = #{id}
+ 	</select>
+	
+	<!-- 창고 목록 -->
+	<select id="warehouse_list_sc" resultType="com.springboot.team_one.dto.AssembleDTO">
+ 		SELECT wh_id, name wa_name
+  		FROM WAREHOUSE
+ 	</select>
+ 	
+  	<!-- 전표 승인 요청 -->
+	<update id="request_update_sc" parameterType="String">
+	UPDATE request
+	SET status = '요청' 
+	WHERE request_id = #{request_id}
+	</update> 
+ 	
+     <!-- 입하 등록 -->
+ 	<insert id="inbound_insert" parameterType="java.util.Map">
+    	INSERT INTO INBOUND(inbound_id,request_id,wh_id,INBOUND_DATE)
+		VALUES ((SELECT NVL(MAX(inbound_id)+1,1)FROM inbound), #{request_id}, #{wh_id},current_date)
+    </insert>
+	
+	<!-- ================판매================ -->
+ 	<!-- 주문서 조회 -->
+ 	<select id="order_list" parameterType="java.util.Map" resultMap="order_listMap"> 
+	SELECT r.REQUEST_ID,
+	       c.NAME cl_name,
+	       c.CEO_NAME,
+	       c.PHONE,
+	       e.NAME em_name,
+	       r.BEGIN_DATE,
+		   r.END_DATE,
+	       s.STATE,
+	       r.STATUS
+	  FROM REQUEST r
+	  JOIN CLIENT c
+	    on r.client_id = c.client_id
+	  JOIN EMPLOYEE e
+	    on r.employee_id = e.employee_id
+	  JOIN SLIP s
+	    on r.REQUEST_ID = s.REQUEST_ID	    
+	 WHERE r.TYPE = '주문서'
+	   AND c.STATUS = '거래중'
+	   AND c.TYPE = '판매'
+	 ORDER BY REQUEST_ID DESC 
+ 	</select>
+ 	
+   	<resultMap id="order_listMap" type="com.springboot.team_one.dto.AssembleDTO">
+		<result property="request_id" column="REQUEST_ID" />
+        <result property="cl_name" column="cl_name" />
+        <result property="ceo_name" column="CEO_NAME" />
+        <result property="cl_phone" column="PHONE" />
+        <result property="em_name" column="em_name" />
+        <result property="begin_date" column="BEGIN_DATE" />
+        <result property="end_date" column="END_DATE" />        
+        <result property="re_type" column="TYPE" />
+        <result property="state" column="STATE" />
+        <result property="re_status" column="STATUS" />
+    </resultMap>
+    
+    <!-- 전표 승인 -->
+    <update id="slip_update" parameterType="String">
+    UPDATE slip
+    SET state='신청' 
+    WHERE request_id=#{request_id}
+    </update>
+    
+    <!-- 적요 추가 -->
+    <update id="sales_slip_update" parameterType="java.util.Map">
+    UPDATE sales_slip
+    SET abstract = #{abst}
+    WHERE slip_id = (SELECT slip_id FROM slip WHERE request_id = #{request_id})
+    </update>
+    
+  	<!-- REQUEST 상세 상품 -->
+ 	<select id="request_product" parameterType="String" resultMap="request_productMap"> 
+	SELECT p.NAME pr_name,
+		   p.CATEGORY,
+		   p.PRICE,
+		   p.PRODUCT_ID,
+		   rd.QTY,
+		   r.request_id
+	  FROM REQUEST r
+	  JOIN REQUEST_DETAIL rd
+	    ON r.REQUEST_ID = rd.REQUEST_ID
+	  JOIN PRODUCT p
+		ON p.product_id = rd.product_id	    
+	 WHERE r.REQUEST_ID = #{request_id}
+ 	</select>
+ 	
+   	<resultMap id="request_productMap" type="com.springboot.team_one.dto.AssembleDTO">
+        <result property="pr_name" column="pr_name" />
+        <result property="category" column="CATEGORY" />
+        <result property="price" column="PRICE" />
+        <result property="product_id" column="PRODUCT_ID" />
+        <result property="re_qty" column="QTY" />
+        <result property="request_id" column="REQUEST_ID" />
+    </resultMap>
+    
+ 	<!-- 창고 목록 -->
+ 	<select id="warehouse_list" resultMap="warehouse_listMap"> 
+	SELECT w.WH_ID,
+		   w.NAME as wa_name,
+           p.NAME as pr_name,
+           sum(l.QTY) QTY
+	  FROM WAREHOUSE w
+      JOIN LACK l
+        ON w.WH_ID = l.WH_ID
+      JOIN PRODUCT p
+        ON l.PRODUCT_ID = p.PRODUCT_ID
+     WHERE p.PRODUCT_ID = #{product_id}
+     GROUP BY w.WH_ID,w.NAME,p.NAME
+ 	</select>
+ 	
+   	<resultMap id="warehouse_listMap" type="com.springboot.team_one.dto.AssembleDTO">
+		<result property="wh_id" column="WH_ID" />
+        <result property="wa_name" column="wa_name" />
+		<result property="pr_name" column="pr_name" />
+        <result property="la_qty" column="QTY" />
+    </resultMap>
+    
+    <!-- 주문서 출고 요청 -->
+    <update id="request_update" parameterType="String">
+    UPDATE REQUEST
+    SET STATUS = '요청'
+    WHERE REQUEST_ID = #{request_id}
+    </update>
+    
+ 	<!-- 출고 대기 -->
+	<insert id="outbound_insert" parameterType="java.util.Map"> 
+	INSERT INTO OUTBOUND(OUTBOUND_ID, OUTBOUND_DATE, REQUEST_ID, WH_ID)
+			VALUES ((SELECT NVL(MAX(OUTBOUND_ID)+1,1) FROM OUTBOUND), current_date, #{request_id}, #{wh_id})
+ 	</insert>
+ 	
+ 	<!-- 매출장 목록 -->
+	<select id="purchase_out_list_vue" resultType="com.springboot.team_one.dto.AssembleDTO">
+		SELECT sl.register_date sl_register_date
+			 , sl.update_date update_date
+			 , sl.state state
+		     , sa.sale_slip_id sale_slip_id
+		     , sa.account_title sa_account_title
+		     , ROUND(sa.supply_amount) supply_amount
+		     , ROUND(sa.tax_amount) tax_amount
+		     , sa.type sa_type
+		     , sa.abstract sa_abstract
+		     , c.client_id client_id
+		     , c.name cl_name
+		  FROM slip sl, sales_slip sa, request r, client c
+		 WHERE sa.slip_id = sl.slip_id
+		   AND sl.request_id = r.request_id
+		   AND r.client_id = c.client_id
+		   AND sa.type IN '매출'
+		   AND sl.state NOT IN '요청'
+		 ORDER BY sa.sale_slip_id DESC
+	</select>
+	
+	<!-- ================물류================ -->
+<!-- 창고  목록-->
+	<select id="warehouseList"  resultType="com.springboot.team_one.dto.AssembleDTO">
+   			SELECT name wa_name, volume volume, reg_date wa_reg_date, status wa_status, wh_id wh_id
+  			  FROM warehouse
+  			  ORDER BY wh_id ASC
+	</select>
+	
+<!-- 입하 내역  -->
+	<select id="arrival_history_list" resultType="com.springboot.team_one.dto.AssembleDTO">
+		SELECT c.name cl_name, r.begin_date begin_date, 
+		   count(rd.qty)re_qty, r.status re_status , 
+		   r.request_id request_id, i.inbound_date ,
+		   i.wh_id , w.name wa_name, i.status inbound_status
+		 FROM client c
+		    , request r
+		    , request_detail rd
+		    , inbound i
+		    , warehouse w
+		WHERE r.client_id = c.client_id
+		  AND i.request_id = r.request_id
+		  AND r.request_id = rd.request_id
+		  AND w.wh_id = i.wh_id
+		  AND r.type = '주문서'
+		  AND r.status = '승인'
+		group by c.name,r.begin_date,r.status,r.request_id,i.inbound_date, w.name, i.wh_id, i.status
+		ORDER BY request_id desc
+	</select>
+	
+<!-- 출고 내역 -->
+   <select id="release_history_list" resultType="com.springboot.team_one.dto.AssembleDTO">        
+        SELECT c.name cl_name, r.begin_date begin_date, 
+            count(rd.qty)re_qty, r.status re_status , 
+            r.request_id request_id, o.outbound_date ,
+            o.wh_id , w.name wa_name, o.status outbound_status
+       FROM client c
+          , request r
+          , request_detail rd
+          , outbound o
+          , warehouse w
+      WHERE r.client_id = c.client_id
+        AND o.request_id = r.request_id
+        AND r.request_id = rd.request_id
+        AND w.wh_id = o.wh_id
+        AND r.type = '주문서'
+        AND r.status = '승인'
+        AND o.status = '출고완료'
+      group by c.name,r.begin_date,r.status,r.request_id,o.outbound_date, w.name, o.wh_id, o.status
+      ORDER BY request_id desc
+   </select>
+   
+<!-- 입고 내역 -->
+   <select id="warehousing_list" resultType="com.springboot.team_one.dto.AssembleDTO">        
+        SELECT c.name cl_name, r.begin_date begin_date, 
+         count(rd.qty)re_qty, r.status re_status , 
+         r.request_id request_id, i.inbound_date ,
+         i.wh_id , w.name wa_name, i.status inbound_status
+       FROM client c
+          , request r
+          , request_detail rd
+          , inbound i
+          , warehouse w
+      WHERE r.client_id = c.client_id
+        AND i.request_id = r.request_id
+        AND r.request_id = rd.request_id
+        AND w.wh_id = i.wh_id
+        AND r.type = '주문서'
+        AND r.status = '승인'
+        AND i.status = '입고완료'
+      group by c.name,r.begin_date,r.status,r.request_id,i.inbound_date, w.name, i.wh_id, i.status
+      ORDER BY request_id desc
+   </select>
+	<!-- ================출/퇴근================ -->
+   <select id="vue_per_attdance_list" parameterType="String" resultType="com.springboot.team_one.dto.AssembleDTO">
+      SELECT ATTENDANCE_ID, START_DATE as at_start_date, REASON as at_reason, END_DATE as at_end_date, ATTENDANCE_STATUS, EMPLOYEE_ID, COLOR
+      FROM ATTENDANCE
+      WHERE ATTENDANCE_STATUS NOT like '%휴가%'
+      ORDER BY START_DATE DESC
+   </select>
+   
+</mapper>
